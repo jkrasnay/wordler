@@ -1,0 +1,207 @@
+#!/usr/bin/env bb
+; vim: set ft=clojure:
+(ns wordler
+  (:require
+    [clojure.string :as string]))
+
+;; Wordler - Wordle Helper
+;;
+;; This helper accepts your guesses and shows the possible words
+;; that match your result so far.
+;;
+;; Usage:
+;;
+;; bb wordle.clj train 01221 foods 22100
+;;
+;; The arguments to the script alternate between your guess and
+;; the results for that guess. Digits in the result line up with
+;; letters in the guess:
+;;
+;; 0 - grey
+;; 1 - yellow
+;; 2 - green
+;;
+
+
+;; Internals
+;;
+;; Results are stored in a map with the following keys
+;;
+;; All positions are zero-based, from 0 to 4
+;;
+;; :hits   | Coll of [position letter] pairs that are hits (green squares) in any previous guess
+;; :misses | Coll of [position letter] pairs that are misses (yellow squares) in any previous guess
+;; :nots   | Set of letters that are grey squares that are not otherwise hits or misses
+;;
+
+(def words-file "/usr/share/dict/words")
+
+(defmacro dbg [x] `(let [x# ~x] (println '~x x#) x#))
+
+(defn hit-present?
+  [word [pos letter]]
+  (= letter (nth word pos)))
+
+
+(defn hits-present?
+  [state word]
+  (every? (partial hit-present? word)
+          (:hits state)))
+
+
+(defn misses-not-present?
+  [state word]
+  (not-any? (partial hit-present? word)
+            (:misses state)))
+
+
+(defn miss-present-elsewhere?
+  [word [pos letter]]
+  (some identity (map-indexed (fn [i l]
+                                (and (= l letter)
+                                     (not= i pos)))
+                              word)))
+
+(defn misses-present-elsewhere?
+  [state word]
+  (every? (partial miss-present-elsewhere? word)
+          (:misses state)))
+
+
+(defn nots-absent?
+  [state word]
+  (not-any? #(contains? (:nots state) %)
+            word))
+
+
+(defn compatible?
+  "Returns true if the given word is a match for the current state. A word matches if all the following are true.
+
+  - All hits are present.
+  - All misses are not present.
+  - The letter for each miss is present but in a different position.
+  - No letter in :nots is present.
+  "
+  [state word]
+  (and (hits-present? state word)
+       (misses-not-present? state word)
+       (misses-present-elsewhere? state word)
+       (nots-absent? state word)))
+
+
+(defn update-hits-misses
+  [state word result]
+  (reduce (fn [state [pos letter result]]
+            (cond
+              (= \2 result) (update state :hits conj [pos letter])
+              (= \1 result) (update state :misses conj [pos letter])
+              :else state))
+          state
+          (map vector (range) word result)))
+
+
+(defn update-nots
+  [state word result]
+  (let [seen? (set (concat
+                     (map second (:hits state))
+                     (map second (:misses state))))]
+    (reduce (fn [state [letter result]]
+              (if (and (= \0 result)
+                       (not (seen? letter)))
+                (update state :nots conj letter)
+                state))
+            state
+            (map vector word result))))
+
+
+(def init-state
+  {:hits []
+   :misses []
+   :nots #{}})
+
+
+(defn update-state
+  "Returns an updated state with the given result.
+  "
+  [state word result]
+  (-> state
+      (update-hits-misses word result)
+      (update-nots word result)))
+
+(defn build-state
+  "Returns a state from a list of strings representing guesses and results.
+  "
+  [guesses-results]
+  (reduce (fn [state [word result]]
+                (update-state state word result))
+              init-state
+              (partition 2 guesses-results)))
+
+(def usage-str
+  "
+  Usage:
+
+  bb wordle.clj args...
+
+  Where args... is an alternating list of words and results.
+
+  Each result is a 5-digit number where 0 indicates no match (a grey square), 1
+  indicates a miss (a yellow square), and 2 represents a hit (a green
+  square).
+
+  Example: bb wordle.clj train 01000 deter 02001
+
+  Enter your existing results and the helper will print a list of suggestions
+  that match the given results.
+  ")
+
+
+(defn usage
+  []
+  (println usage-str))
+
+
+(defn validate-word
+  [s]
+  (when-not (re-matches #"[a-z]{5}" s)
+    (str "Invalid word: " s)))
+
+
+(defn validate-result
+  [s]
+  (when-not (re-matches #"[0-9]{5}" s)
+    (str "Invalid result: " s)))
+
+
+(defn validate-args
+  [args]
+  (or
+
+    (when (odd? (count args))
+      "Specify an alternating lists of words and results, e.g. 'train 01002'")
+
+    (some identity (for [[word result] (partition 2 args)]
+                     (or (validate-word word)
+                         (validate-result result))))))
+
+
+
+(defn load-words
+  []
+  (->> (string/split (slurp "/usr/share/dict/words") #"\n")
+       (filter #(re-matches #"[a-z]{5}" %))))
+
+(defn main
+  [& args]
+  (if (zero? (count args))
+    (usage)
+    (if-let [msg (validate-args args)]
+      (println msg)
+      (let [state (build-state args)
+            words (->> (load-words)
+                       (filter (partial compatible? state)))]
+        (doseq [w words]
+          (println w))
+        (println (count words) "possible matches")))))
+
+(apply main *command-line-args*)

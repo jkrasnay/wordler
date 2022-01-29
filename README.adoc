@@ -1,0 +1,31 @@
+= Wordler - Wordle Helper
+
+Utility to help with your link:https://www.powerlanguage.co.uk/wordle/[Wordle] guesses.
+
+== Installation
+
+These installation instructions are for MacOS. The instructions should work for
+Linux but you may need to change the script to point to your distribution's
+`words` file.
+
+* Install link:https://babashka.org/[Babashka]
+* Copy the `wordler` script to your local disk
+* Make the script executable: `chmod +x wordler`
+
+== Usage
+
+Run Wordler after making each guess, providing all your guesses and their
+results. For example, suppose you guess TRAIN and Wordle gives you a green
+square for the R and a yellow square for the N. Provide this to wordler as
+follows, using 0 in the position where there's a grey square, 1 in the position
+where there's a yellow square, and 2 where there's a green square:
+
+----
+./wordler train 02001
+----
+
+For each subsequent guess, repeat the command but with the new guess added:
+
+----
+./wordler train 02001 drunk 22020
+----
