@@ -34,7 +34,7 @@
 ;; :nots   | Set of letters that are grey squares that are not otherwise hits or misses
 ;;
 
-(def words-file "/usr/share/dict/words")
+(def words-file "words")
 
 (defmacro dbg [x] `(let [x# ~x] (println '~x x#) x#))
 
@@ -188,8 +188,7 @@
 
 (defn load-words
   []
-  (->> (string/split (slurp "/usr/share/dict/words") #"\n")
-       (filter #(re-matches #"[a-z]{5}" %))))
+  (string/split (slurp words-file) #"\n"))
 
 (defn main
   [& args]
